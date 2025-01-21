@@ -25,28 +25,40 @@ public class AnnotationHandlerMapping {
         this.handlerExecutions = new HashMap<>();
     }
 
-    public void initialize()
-            throws NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
-        Reflections reflections = new Reflections(basePackage);
-        Set<Class<?>> controllers = reflections.getTypesAnnotatedWith(Controller.class);
+    public void initialize() {
+        getControllers().forEach(this::registerHandlers);
+        log.info("Initialized AnnotationHandlerMapping!");
+    }
 
-        for (Class<?> controller : controllers) {
-            Object handler = controller.getConstructor().newInstance();
+    private Set<Class<?>> getControllers() {
+        Reflections reflections = new Reflections(basePackage);
+        return reflections.getTypesAnnotatedWith(Controller.class);
+    }
+
+    private void registerHandlers(Class<?> controller) {
+        try {
+            Object instanceController = controller.getConstructor().newInstance();
             Method[] declaredMethods = controller.getDeclaredMethods();
 
             for (Method declaredMethod : declaredMethods) {
-                RequestMapping declaredAnnotation = declaredMethod.getDeclaredAnnotation(RequestMapping.class);
-                RequestMethod[] requestMethods = declaredAnnotation.method();
-
-                for (RequestMethod requestMethod : requestMethods) {
-                    HandlerKey handlerKey = new HandlerKey(declaredAnnotation.value(), requestMethod);
-                    HandlerExecution handlerExecution = new HandlerExecution(handler, declaredMethod);
-                    handlerExecutions.put(handlerKey, handlerExecution);
-                }
+                registerHandlersByMethod(instanceController, declaredMethod);
             }
+        } catch (NoSuchMethodException exception) {
+            log.error("해당 메서드가 존재하지 않습니다.");
+        } catch (InvocationTargetException | InstantiationException | IllegalAccessException exception) {
+            log.error("객체를 인스턴스화 할 수 없습니다.");
         }
+    }
 
-        log.info("Initialized AnnotationHandlerMapping!");
+    private void registerHandlersByMethod(Object instanceController, Method declaredMethod) {
+        RequestMapping declaredAnnotation = declaredMethod.getDeclaredAnnotation(RequestMapping.class);
+        RequestMethod[] requestMethods = declaredAnnotation.method();
+
+        for (RequestMethod requestMethod : requestMethods) {
+            HandlerKey handlerKey = new HandlerKey(declaredAnnotation.value(), requestMethod);
+            HandlerExecution handlerExecution = new HandlerExecution(instanceController, declaredMethod);
+            handlerExecutions.put(handlerKey, handlerExecution);
+        }
     }
 
     public Object getHandler(final HttpServletRequest request) {
